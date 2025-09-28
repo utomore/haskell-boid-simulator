@@ -48,7 +48,7 @@ main = simulate window background fps initialWorld drawWorld updateWorld
 initialWorld :: World
 initialWorld = World 0.0 initialBoids
     where
-        numBoids = 70
+        numBoids = 150
         initialGen = mkStdGen 42 -- Seed
         (posGen, velGen) = splitGen initialGen
 
@@ -126,10 +126,10 @@ maxSpeed :: Float
 maxSpeed = 150.0
 
 maxForce :: Float
-maxForce = 5.0
+maxForce = 10.0
 
 neighborRadius :: Float
-neighborRadius = 75.0
+neighborRadius = 100.0
 
 updateSingleBoid :: Float -> [Boid] -> Boid -> Boid
 updateSingleBoid dt allboids boid = 
@@ -156,10 +156,10 @@ calculateForces boid allboids =
     let 
         neighbors = findBoidNeighbors boid allboids
         
-        wSeparation = 5.0
-        wAlignment = 4
-        wCohesion = 3.0
-        wBoundary = 5
+        wSeparation = 1.8
+        wAlignment = 2
+        wCohesion = 1.8
+        wBoundary = 3
 
         forceCohesion       = ruleCohesion boid neighbors
         forceSeparation     = ruleSeparation boid neighbors
@@ -206,15 +206,15 @@ ruleSeparation boid neighbors =
                     in if dist > 0 
                         then acc + (normalize diff ^/ dist)
                         else acc
-        avgRepulsion = if null neighbors 
-                        then V2 0 0 
-                        else sumOfRepulsions ^/ fromIntegral (length neighbors)
+        -- avgRepulsion = if null neighbors 
+        --                 then V2 0 0 
+        --                 else sumOfRepulsions ^/ fromIntegral (length neighbors)
           
     in 
-        if quadrance avgRepulsion > 0
+        if quadrance sumOfRepulsions > 0
         then 
             let
-                desired = normalize avgRepulsion ^* maxSpeed
+                desired = normalize sumOfRepulsions ^* maxSpeed
                 in steer boid desired
         else V2 0 0
         
@@ -262,20 +262,21 @@ ruleBoundaryAvoidance boid =
     let 
         Position (V2 px py) = boidPos boid
         margin = 100.0 
-        turnForce = 20.0
 
         halfWidth = fromIntegral screeWidth / 2 
         halfHeight = fromIntegral screeHeight / 2 
-        
-        fx  | px < -halfWidth + margin  = turnForce
-            | px > halfWidth - margin   = -turnForce
-            | otherwise                 = 0
 
-        fy  | py < -halfHeight + margin = turnForce
-            | py > halfHeight - margin  = -turnForce
-            | otherwise                 = 0
+        desiredVel = V2 0 0
+        updatedDesiredVel
+            | px < -halfWidth + margin  = desiredVel + V2 maxSpeed 0
+            | px > halfWidth - margin   = desiredVel - V2 maxSpeed 0
+            | py < -halfHeight + margin = desiredVel + V2 0 maxSpeed
+            | py > halfHeight - margin  = desiredVel - V2 0 maxSpeed
+            | otherwise                 = desiredVel
     in
-        V2 fx fy
+        if quadrance updatedDesiredVel > 0
+        then steer boid updatedDesiredVel
+        else V2 0 0
 
 limit :: Float -> V2 Float -> V2 Float
 limit maxLen vec = 
