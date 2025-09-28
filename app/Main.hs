@@ -32,6 +32,7 @@ data Config = Config
     { cfgScreenWidth         :: Int
     , cfgScreenHeight        :: Int
     , cfgFPS                 :: Int
+    , cfgBackground          :: Color
 
     , cfgNumBoids            :: Int
     , cfgMaxSpeed            :: Float
@@ -51,6 +52,7 @@ defaultConfig = Config
     { cfgScreenWidth         = 800
     , cfgScreenHeight        = 600
     , cfgFPS                 = 60
+    , cfgBackground          = black
 
     , cfgNumBoids            = 70
     , cfgMaxSpeed            = 150.0
@@ -64,35 +66,18 @@ defaultConfig = Config
     , cfgWBoundary           = 3
 }
 
-screeWidth, screeHeight :: Int
-screeWidth = cfgScreenWidth defaultConfig
-screeHeight = cfgScreenHeight defaultConfig
+window :: Config -> Display
+window cfg = InWindow "Boid Algorithms!!" (cfgScreenWidth cfg, cfgScreenHeight cfg) (100,100)
 
-
-window :: Display
-window = InWindow "Boid Algorithms!!" (screeWidth, screeHeight) (100,100)
-
-background :: Color
-background = black
-
-fps :: Int
-fps = cfgFPS defaultConfig
-
-maxSpeed :: Float
-maxSpeed = cfgMaxSpeed defaultConfig
-
-maxForce :: Float
-maxForce = cfgMaxForce defaultConfig
-
-neighborRadius :: Float
-neighborRadius = cfgNeighborRadius defaultConfig
 
 main :: IO ()
-main = simulate window background fps initialWorld drawWorld updateWorld
+main = do
+    let cfg = defaultConfig
+    simulate (window cfg) (cfgBackground cfg) (cfgFPS cfg) (initialWorld cfg) drawWorld updateWorld
 
 
-initialWorld :: World
-initialWorld = World defaultConfig 0.0 initialBoids
+initialWorld :: Config -> World
+initialWorld cfg = World cfg 0.0 initialBoids
     where
         numBoids = cfgNumBoids defaultConfig
         initialGen = mkStdGen 42 -- Seed
@@ -100,6 +85,11 @@ initialWorld = World defaultConfig 0.0 initialBoids
 
         (xPosGen, yPosGen) = splitGen posGen
         (vxPosGen, vyPosGen) = splitGen velGen
+
+        screeWidth = cfgScreenWidth cfg
+        screeHeight = cfgScreenHeight cfg
+
+        maxSpeed = cfgMaxSpeed cfg
 
         halfW = fromIntegral screeWidth / 2
         halfH = fromIntegral screeHeight / 2
@@ -244,10 +234,6 @@ ruleSeparation cfg boid neighbors =
                     in if dist > 0 
                         then acc + (normalize diff ^/ dist)
                         else acc
-        -- avgRepulsion = if null neighbors 
-        --                 then V2 0 0 
-        --                 else sumOfRepulsions ^/ fromIntegral (length neighbors)
-          
     in 
         if quadrance sumOfRepulsions > 0
         then 
@@ -299,8 +285,13 @@ ruleBoundaryAvoidance cfg boid =
         Position (V2 px py) = boidPos boid
         margin = cfgBoundaryMargin cfg
 
+        screeWidth = cfgScreenWidth cfg
+        screeHeight = cfgScreenHeight cfg
+
         halfWidth = fromIntegral screeWidth / 2 
         halfHeight = fromIntegral screeHeight / 2 
+        
+        maxSpeed = cfgMaxSpeed cfg
 
         fx      | px < -halfWidth + margin  =  maxSpeed
                 | px > halfWidth - margin   =  -maxSpeed
