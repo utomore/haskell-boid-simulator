@@ -23,13 +23,50 @@ data Boid = Boid {
     } deriving (Show)
 
 data World = World {
-    timestamp :: Float, 
-    boids :: [Boid]
-    } deriving (Show)
+    config      :: Config,
+    timestamp   :: Float, 
+    boids       :: [Boid]
+    }
+
+data Config = Config 
+    { cfgScreenWidth         :: Int
+    , cfgScreenHeight        :: Int
+    , cfgFPS                 :: Int
+
+    , cfgNumBoids            :: Int
+    , cfgMaxSpeed            :: Float
+    , cfgMaxForce            :: Float
+    , cfgNeighborRadius      :: Float
+    , cfgBoundaryMargin      :: Float
+
+    , cfgWSeparation         :: Float
+    , cfgWAlignment          :: Float
+    , cfgWCohesion           :: Float
+    , cfgWBoundary           :: Float
+    }
+
+
+defaultConfig :: Config
+defaultConfig = Config
+    { cfgScreenWidth         = 800
+    , cfgScreenHeight        = 600
+    , cfgFPS                 = 60
+
+    , cfgNumBoids            = 70
+    , cfgMaxSpeed            = 150.0
+    , cfgMaxForce            = 10.0
+    , cfgNeighborRadius      = 100.0
+    , cfgBoundaryMargin      = 100.0
+
+    , cfgWSeparation         = 1.8
+    , cfgWAlignment          = 2
+    , cfgWCohesion           = 1.8
+    , cfgWBoundary           = 3
+}
 
 screeWidth, screeHeight :: Int
-screeWidth = 1200
-screeHeight = 900
+screeWidth = cfgScreenWidth defaultConfig
+screeHeight = cfgScreenHeight defaultConfig
 
 
 window :: Display
@@ -39,16 +76,25 @@ background :: Color
 background = black
 
 fps :: Int
-fps = 60
+fps = cfgFPS defaultConfig
+
+maxSpeed :: Float
+maxSpeed = cfgMaxSpeed defaultConfig
+
+maxForce :: Float
+maxForce = cfgMaxForce defaultConfig
+
+neighborRadius :: Float
+neighborRadius = cfgNeighborRadius defaultConfig
 
 main :: IO ()
 main = simulate window background fps initialWorld drawWorld updateWorld
 
 
 initialWorld :: World
-initialWorld = World 0.0 initialBoids
+initialWorld = World defaultConfig 0.0 initialBoids
     where
-        numBoids = 150
+        numBoids = cfgNumBoids defaultConfig
         initialGen = mkStdGen 42 -- Seed
         (posGen, velGen) = splitGen initialGen
 
@@ -77,9 +123,10 @@ drawWorld = Pictures . map drawSingleBoid . boids
 updateWorld :: ViewPort -> Float -> World -> World
 updateWorld _ dt oldWorld = 
     let 
+        cfg = config oldWorld
         currentTime = timestamp oldWorld
         oldBoids = boids oldWorld
-        newBoids = map (updateSingleBoid dt oldBoids) oldBoids
+        newBoids = map (updateSingleBoid cfg dt oldBoids) oldBoids
     in oldWorld { timestamp = currentTime + dt, boids = newBoids}
 
 
@@ -121,26 +168,17 @@ drawSingleBoid boid =
 
     in GL.Translate px py  $ GL.Pictures [boidModel, velocityLine] --debugText]
 
-
-maxSpeed :: Float
-maxSpeed = 150.0
-
-maxForce :: Float
-maxForce = 10.0
-
-neighborRadius :: Float
-neighborRadius = 100.0
-
-updateSingleBoid :: Float -> [Boid] -> Boid -> Boid
-updateSingleBoid dt allboids boid = 
+updateSingleBoid :: Config -> Float -> [Boid] -> Boid -> Boid
+updateSingleBoid cfg dt allboids boid = 
     let 
+
         Position oldPos = boidPos boid
         Velocity oldVec = boidVel boid
 
-        Acceleration acc = calculateForces boid allboids
+        Acceleration acc = calculateForces cfg boid allboids
 
         updatedVel =  oldVec + (acc ^* dt)
-        limiatedVel = limit maxSpeed updatedVel
+        limiatedVel = limit (cfgMaxSpeed cfg) updatedVel
 
         newPos = oldPos + (limiatedVel ^* dt)
 
@@ -151,20 +189,20 @@ updateSingleBoid dt allboids boid =
         }
 
 
-calculateForces :: Boid -> [Boid] -> Acceleration
-calculateForces boid allboids =
+calculateForces :: Config -> Boid -> [Boid] -> Acceleration
+calculateForces cfg boid allboids =
     let 
-        neighbors = findBoidNeighbors boid allboids
+        neighbors = findBoidNeighbors cfg boid allboids
         
-        wSeparation = 1.8
-        wAlignment = 2
-        wCohesion = 1.8
-        wBoundary = 3
+        wSeparation = cfgWSeparation cfg
+        wAlignment = cfgWAlignment cfg
+        wCohesion = cfgWCohesion cfg
+        wBoundary = cfgWBoundary cfg
 
-        forceCohesion       = ruleCohesion boid neighbors
-        forceSeparation     = ruleSeparation boid neighbors
-        forceAlignment      = ruleAlignment boid neighbors
-        forceBoundary       = ruleBoundaryAvoidance boid
+        forceCohesion       = ruleCohesion cfg boid neighbors
+        forceSeparation     = ruleSeparation cfg boid neighbors
+        forceAlignment      = ruleAlignment cfg boid neighbors
+        forceBoundary       = ruleBoundaryAvoidance cfg boid
 
         accer = (forceCohesion ^* wCohesion) + 
                 (forceSeparation ^* wSeparation) + 
@@ -173,8 +211,8 @@ calculateForces boid allboids =
     in Acceleration accer
 
 
-findBoidNeighbors :: Boid -> [Boid] -> [Boid]
-findBoidNeighbors mainBoid = filter isPotentialNeighbor
+findBoidNeighbors :: Config -> Boid -> [Boid] -> [Boid]
+findBoidNeighbors cfg mainBoid = filter isPotentialNeighbor
     where
         isPotentialNeighbor otherBoid = 
             (boidId mainBoid /= boidId otherBoid) && 
@@ -182,18 +220,18 @@ findBoidNeighbors mainBoid = filter isPotentialNeighbor
                 Position mainPos = boidPos mainBoid
                 Position otherPos = boidPos otherBoid
              in 
-                quadrance (mainPos - otherPos) <= neighborRadius * neighborRadius
+                quadrance (mainPos - otherPos) <= cfgNeighborRadius cfg * cfgNeighborRadius cfg
             )
 
-steer :: Boid -> V2 Float -> V2 Float
-steer boid desired = 
+steer :: Config -> Boid -> V2 Float -> V2 Float
+steer cfg boid desired = 
     let Velocity currentVel = boidVel boid
         steeringForce = desired - currentVel
-    in limit maxForce steeringForce
+    in limit (cfgMaxForce cfg) steeringForce
 
-ruleSeparation :: Boid -> [Boid] -> V2 Float
-ruleSeparation _ [] = V2 0 0
-ruleSeparation boid neighbors = 
+ruleSeparation :: Config -> Boid -> [Boid] -> V2 Float
+ruleSeparation _ _ [] = V2 0 0
+ruleSeparation cfg boid neighbors = 
     let 
         Position myPos  = boidPos boid
         sumOfRepulsions = foldl' addRepulsionForce  (V2 0.0 0.0) neighbors 
@@ -214,14 +252,14 @@ ruleSeparation boid neighbors =
         if quadrance sumOfRepulsions > 0
         then 
             let
-                desired = normalize sumOfRepulsions ^* maxSpeed
-                in steer boid desired
+                desired = normalize sumOfRepulsions ^* cfgMaxSpeed cfg
+                in steer cfg boid desired
         else V2 0 0
         
 
-ruleCohesion :: Boid -> [Boid] -> V2 Float
-ruleCohesion _ [] = V2 0.0 0.0
-ruleCohesion boid neighbors = 
+ruleCohesion :: Config -> Boid -> [Boid] -> V2 Float
+ruleCohesion _ _ [] = V2 0.0 0.0
+ruleCohesion cfg boid neighbors = 
     let
         Position myPos = boidPos boid
         totalCohesionForce = foldl' addCohesionForce (V2 0.0 0.0) neighbors
@@ -234,14 +272,14 @@ ruleCohesion boid neighbors =
     in
         if quadrance desiredVec > 0 
         then
-            let desired = normalize desiredVec ^* maxSpeed
-            in steer boid desired
+            let desired = normalize desiredVec ^* cfgMaxSpeed cfg
+            in steer cfg boid desired
         else V2 0 0
          
 
-ruleAlignment :: Boid -> [Boid] -> V2 Float
-ruleAlignment _ [] = V2 0.0 0.0
-ruleAlignment boid neighbors = 
+ruleAlignment :: Config -> Boid -> [Boid] -> V2 Float
+ruleAlignment _ _ [] = V2 0.0 0.0
+ruleAlignment cfg boid neighbors = 
     let 
         avgVelocity  = foldl' calAliNeighborForce (V2 0.0 0.0) neighbors ^/ fromIntegral (length neighbors)
             where
@@ -251,31 +289,29 @@ ruleAlignment boid neighbors =
     in 
         if quadrance avgVelocity > 0
         then 
-            let desired = normalize avgVelocity ^* maxSpeed
-            in steer boid desired
+            let desired = normalize avgVelocity ^* cfgMaxSpeed cfg
+            in steer cfg boid desired
         else V2 0 0
 
-
-
-ruleBoundaryAvoidance :: Boid -> V2 Float
-ruleBoundaryAvoidance boid =
+ruleBoundaryAvoidance :: Config -> Boid -> V2 Float
+ruleBoundaryAvoidance cfg boid =
     let 
         Position (V2 px py) = boidPos boid
-        margin = 100.0 
+        margin = cfgBoundaryMargin cfg
 
         halfWidth = fromIntegral screeWidth / 2 
         halfHeight = fromIntegral screeHeight / 2 
 
-        desiredVel = V2 0 0
-        updatedDesiredVel
-            | px < -halfWidth + margin  = desiredVel + V2 maxSpeed 0
-            | px > halfWidth - margin   = desiredVel - V2 maxSpeed 0
-            | py < -halfHeight + margin = desiredVel + V2 0 maxSpeed
-            | py > halfHeight - margin  = desiredVel - V2 0 maxSpeed
-            | otherwise                 = desiredVel
+        fx      | px < -halfWidth + margin  =  maxSpeed
+                | px > halfWidth - margin   =  -maxSpeed
+                | otherwise                 = 0
+        fy      | py < -halfHeight + margin =  maxSpeed
+                | py > halfHeight - margin  =  -maxSpeed
+                | otherwise                 = 0
+        desiredVel2 = V2 fx fy
     in
-        if quadrance updatedDesiredVel > 0
-        then steer boid updatedDesiredVel
+        if quadrance desiredVel2 > 0
+        then steer cfg boid desiredVel2
         else V2 0 0
 
 limit :: Float -> V2 Float -> V2 Float
